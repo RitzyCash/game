@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SwiftSeal's Audiobook Player</title>
+    <!-- Load Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom styles for aesthetic enhancements */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #1a1a2e; /* Deep purple background */
+            color: #e4e4e7; /* Light text */
+            min-height: 100vh;
+        }
+
+        /* Styling for the hidden file input with webkitdirectory */
+        #folderInput {
+            display: none;
+        }
+
+        .custom-file-upload {
+            background-color: #2e64e8; /* Blue button */
+            transition: all 0.2s ease-in-out;
+            cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .custom-file-upload:hover {
+            background-color: #4f80f1;
+            transform: translateY(-1px);
+            box-shadow: 0 6px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        audio::-webkit-media-controls-panel {
+            background-color: #2b3a55; /* Darker blue for controls */
+            border-radius: 0.5rem;
+        }
+
+        /* Utility for centering the loading spinner */
+        .spinner {
+            border-top-color: #2e64e8; /* Blue spinning color */
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8 flex flex-col items-center">
+
+    <div class="w-full max-w-4xl bg-[#2b3a55] p-6 md:p-10 rounded-xl shadow-2xl">
+        <h1 class="text-3xl font-bold mb-6 text-center text-white">
+            <span class="text-[#2e64e8] mr-2">Audiobook</span> Player
+        </h1>
+
+        <!-- File Upload Section -->
+        <div id="fileSelectionArea" class="mb-8 text-center">
+            <div id="fileInputContainer">
+                <input type="file" id="folderInput" webkitdirectory="" multiple="" accept="audio/*">
+                <label for="folderInput" id="fileInputLabel"
+                       class="custom-file-upload inline-flex items-center justify-center p-3 text-lg font-semibold rounded-lg text-white">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                    </svg>
+                    Select Audiobook Folder
+                </label>
+                <p class="mt-3 text-sm text-gray-400">
+                    (Select the folder containing your MP3/audio chapters. Nothing is uploaded.)
+                </p>
+            </div>
+
+            <!-- New Loading/Status Indicator for File Processing -->
+            <div id="processingIndicator" class="hidden mt-4 p-4 rounded-lg bg-[#394a64] text-white mx-auto max-w-sm">
+                <div class="flex items-center justify-center">
+                    <div class="spinner h-5 w-5 border-4 border-gray-200 rounded-full mr-3"></div>
+                    <span id="processingMessage" class="font-medium">Processing files...</span>
+                </div>
+                <p class="text-xs text-gray-400 mt-2">Checking contents and retrieving saved progress.</p>
+            </div>
+        </div>
+
+        <!-- Player Display Area -->
+        <div id="playerArea" class="hidden">
+            <div class="mb-6 p-4 bg-[#1a1a2e] rounded-lg shadow-inner">
+                <h2 class="text-xl font-medium mb-2 text-white">Now Playing:</h2>
+                <p id="currentChapterName" class="text-lg text-[#2e64e8] truncate">
+                    Please select a folder to begin...
+                </p>
+                <div class="text-sm text-gray-400 mt-1">
+                    <span id="chapterIndexDisplay">Chapter 0 of 0</span>
+                </div>
+            </div>
+
+            <!-- Audio Control Element -->
+            <audio id="audioPlayer" class="w-full rounded-lg mb-6" controls></audio>
+
+            <!-- Chapter Navigation -->
+            <div class="flex justify-between items-center space-x-4">
+                <button id="prevChapterBtn"
+                        class="p-3 bg-gray-600 rounded-full text-white hover:bg-gray-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        disabled>
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+                    </svg>
+                </button>
+
+                <div id="currentChapterList" class="flex-grow max-h-48 overflow-y-auto bg-[#1a1a2e] p-2 rounded-lg text-sm space-y-1">
+                    <!-- Chapter list will be dynamically inserted here -->
+                </div>
+
+                <button id="nextChapterBtn"
+                        class="p-3 bg-gray-600 rounded-full text-white hover:bg-gray-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        disabled>
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M13 5l7 7-7 7M5 5l7 7-7 7" />
+                    </svg>
+                </button>
+            </div>
+        </div>
+
+        <!-- Status and User Info -->
+        <div class="mt-8 pt-4 border-t border-gray-700 text-sm text-gray-500 text-center">
+            <p id="statusMessage">Initializing persistence and authentication...</p>
+            <p class="mt-1">User ID: <span id="currentUserId" class="font-mono text-xs text-[#2e64e8]">Loading...</span></p>
+        </div>
+
+        <!-- Custom Notification Modal (Instead of alert()) -->
+        <div id="notificationModal" class="hidden fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center p-4 z-50">
+            <div class="bg-white p-6 rounded-lg shadow-xl max-w-sm w-full">
+                <h3 id="modalTitle" class="text-xl font-bold mb-3 text-gray-800"></h3>
+                <p id="modalMessage" class="text-gray-600 mb-4"></p>
+                <button id="modalCloseBtn" class="w-full bg-[#2e64e8] text-white p-2 rounded-lg hover:bg-[#4f80f1]">
+                    OK
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase Imports -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, onSnapshot, collection, setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // IMPORTANT: Use the provided global variables for environment setup
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-audiobook-app';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : null;
+        // FIX: Correctly reference the global variable __initial_auth_token
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null; 
+
+        if (!firebaseConfig) {
+            console.error("Firebase configuration is missing.");
+            document.getElementById('statusMessage').textContent = "ERROR: Firebase config missing. Cannot save progress.";
+            // ADDED: Set the User ID display to reflect the error state when config is absent
+            document.getElementById('currentUserId').textContent = "CONFIG MISSING"; 
+            // FIX: Removed illegal top-level 'return' that caused SyntaxError
+        }
+
+        // --- Global State & Firebase Setup ---
+        let audioFiles = []; // Array to hold File objects for chapters
+        let currentChapterIndex = 0;
+        let isAuthReady = false;
+        let hasAuthAttempted = false; // NEW FLAG: Tracks if we've explicitly started the sign-in process
+        let db;
+        let auth;
+        let userId;
+
+        // Firestore path constructor
+        const getStateDocRef = (uid) => doc(db, 'artifacts', appId, 'users', uid, 'audiobook_state', 'current_book');
+
+        // DOM Elements
+        const folderInput = document.getElementById('folderInput');
+        const audioPlayer = document.getElementById('audioPlayer');
+        const prevChapterBtn = document.getElementById('prevChapterBtn');
+        const nextChapterBtn = document.getElementById('nextChapterBtn');
+        const currentChapterName = document.getElementById('currentChapterName');
+        const chapterIndexDisplay = document.getElementById('chapterIndexDisplay');
+        const playerArea = document.getElementById('playerArea');
+        const fileSelectionArea = document.getElementById('fileSelectionArea');
+        const statusMessage = document.getElementById('statusMessage');
+        const currentUserIdEl = document.getElementById('currentUserId');
+        const currentChapterListEl = document.getElementById('currentChapterList');
+        // New elements for loading state
+        const fileInputContainer = document.getElementById('fileInputContainer');
+        const processingIndicator = document.getElementById('processingIndicator');
+        const processingMessage = document.getElementById('processingMessage');
+
+
+        // Modal Elements
+        const modal = document.getElementById('notificationModal');
+        const modalTitle = document.getElementById('modalTitle');
+        const modalMessage = document.getElementById('modalMessage');
+        const modalCloseBtn = document.getElementById('modalCloseBtn');
+
+        // --- Utility Functions ---
+
+        function showNotification(title, message) {
+            modalTitle.textContent = title;
+            modalMessage.textContent = message;
+            modal.classList.remove('hidden');
+        }
+
+        modalCloseBtn.addEventListener('click', () => {
+            modal.classList.add('hidden');
+        });
+
+        // Helper functions for loading state
+        function showProcessing(message) {
+            fileInputContainer.classList.add('hidden');
+            processingMessage.textContent = message;
+            processingIndicator.classList.remove('hidden');
+            playerArea.classList.add('hidden');
+        }
+
+        function hideProcessing() {
+            processingIndicator.classList.add('hidden');
+        }
+
+        // Exponential backoff for API calls (kept for completeness, though unused in this app)
+        async function fetchWithRetry(apiUrl, payload, retries = 3) {
+            for (let i = 0; i < retries; i++) {
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) {
+                        // Throw error if response status is not successful
+                        throw new Error(`HTTP error! status: ${response.status}`);
+                    }
+                    return await response.json();
+                } catch (error) {
+                    if (i < retries - 1) {
+                        const delay = Math.pow(2, i) * 1000;
+                        console.warn(`Request failed, retrying in ${delay / 1000}s...`, error.message);
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                    } else {
+                        throw new Error("API request failed after multiple retries: " + error.message);
+                    }
+                }
+            }
+        }
+
+
+        // --- Playback State Management (Firestore) ---
+
+        /**
+         * Saves the current playback state (file path and time) to Firestore.
+         */
+        async function savePlaybackState() {
+            if (!isAuthReady || audioFiles.length === 0) return;
+
+            const currentFile = audioFiles[currentChapterIndex];
+            if (!currentFile) return;
+
+            const state = {
+                // We save the relative path and the book directory name to identify the file later
+                relativeFilePath: currentFile.webkitRelativePath,
+                currentTime: audioPlayer.currentTime,
+                timestamp: Date.now()
+            };
+
+            try {
+                await setDoc(getStateDocRef(userId), state, { merge: true });
+                console.log(`Playback state saved: ${currentFile.webkitRelativePath} at ${audioPlayer.currentTime.toFixed(1)}s`);
+                statusMessage.textContent = `Progress saved: ${currentFile.name} at ${Math.floor(audioPlayer.currentTime)}s`;
+            } catch (error) {
+                console.error("Error saving playback state:", error);
+                statusMessage.textContent = "Error saving progress. Check console for details.";
+                showNotification("Save Error", `Failed to save progress to the database. Reason: ${error.message}`);
+            }
+        }
+
+        /**
+         * Loads the last saved playback state from Firestore and applies it.
+         */
+        function startPlaybackStateListener() {
+            if (!isAuthReady) {
+                hideProcessing();
+                fileInputContainer.classList.remove('hidden');
+                return;
+            }
+
+            // Use onSnapshot to listen for real-time changes, although mainly used for initial load here
+            const unsubscribe = onSnapshot(getStateDocRef(userId), (docSnapshot) => {
+                // Unsubscribe immediately after the first data retrieval (as we only need the initial state check)
+                unsubscribe();
+
+                hideProcessing(); // Processing is done
+                playerArea.classList.remove('hidden');
+                fileSelectionArea.classList.add('hidden');
+
+
+                if (docSnapshot.exists() && audioFiles.length > 0) {
+                    const savedState = docSnapshot.data();
+                    console.log("Loaded saved state:", savedState);
+
+                    if (!savedState.relativeFilePath) {
+                         console.log("Saved state found but no file path. Starting from Chapter 1.");
+                         statusMessage.textContent = "Saved progress found, but no file path. Starting from Chapter 1.";
+                         loadChapter(0, 0);
+                         return;
+                    }
+
+                    // 1. Try to find the matching file in the currently loaded audioFiles
+                    const matchIndex = audioFiles.findIndex(f => f.webkitRelativePath === savedState.relativeFilePath);
+
+                    if (matchIndex !== -1) {
+                        console.log(`Found matching chapter: ${audioFiles[matchIndex].name}`);
+                        currentChapterIndex = matchIndex;
+                        loadChapter(currentChapterIndex, savedState.currentTime);
+                        statusMessage.textContent = `Resuming ${audioFiles[matchIndex].name} at ${Math.floor(savedState.currentTime)}s.`;
+                    } else {
+                        console.warn("Could not find saved file path in currently loaded folder.");
+                        statusMessage.textContent = "Loaded folder does not contain saved chapter. Starting from Chapter 1.";
+                        showNotification("No Resume Point", "We couldn't find the exact file from your last session in the folder you loaded. Starting from Chapter 1.");
+                        loadChapter(0, 0); // Start from beginning if match fails
+                    }
+                } else if (audioFiles.length > 0) {
+                    console.log("No saved state found or folder is empty. Starting from Chapter 1.");
+                    statusMessage.textContent = "No saved progress found. Starting from Chapter 1.";
+                    loadChapter(0, 0);
+                }
+            }, (error) => {
+                hideProcessing();
+                fileSelectionArea.classList.remove('hidden');
+                playerArea.classList.add('hidden');
+                console.error("Error listening to playback state:", error);
+                statusMessage.textContent = "Error loading saved progress.";
+                showNotification("Database Error", `Failed to load saved progress from Firestore. Reason: ${error.message}`);
+            });
+        }
+
+        // --- Player Controls and Logic ---
+
+        /**
+         * Loads the specified audio file into the player and updates the UI.
+         */
+        function loadChapter(index, startTime = 0) {
+            if (index < 0 || index >= audioFiles.length) {
+                showNotification("Error", "Chapter index out of bounds.");
+                return;
+            }
+
+            currentChapterIndex = index;
+            const file = audioFiles[currentChapterIndex];
+            const fileURL = URL.createObjectURL(file);
+
+            audioPlayer.src = fileURL;
+            audioPlayer.load();
+
+            currentChapterName.textContent = file.name;
+            chapterIndexDisplay.textContent = `Chapter ${index + 1} of ${audioFiles.length}`;
+
+            // We must wait for metadata to load before setting currentTime
+            audioPlayer.onloadedmetadata = () => {
+                audioPlayer.currentTime = startTime;
+                audioPlayer.play().catch(e => console.warn("Auto-play prevented:", e.message));
+                // Clean up the URL object to free memory (after src is set and loaded)
+                URL.revokeObjectURL(fileURL);
+            };
+
+            updateControls();
+            updateChapterListUI(index);
+        }
+
+        /**
+         * Updates the disabled state of navigation buttons.
+         */
+        function updateControls() {
+            prevChapterBtn.disabled = currentChapterIndex <= 0;
+            nextChapterBtn.disabled = currentChapterIndex >= audioFiles.length - 1;
+        }
+
+        /**
+         * Renders the list of chapters and highlights the current one.
+         */
+        function updateChapterListUI(highlightIndex) {
+            currentChapterListEl.innerHTML = '';
+            audioFiles.forEach((file, index) => {
+                const isCurrent = index === highlightIndex;
+                const button = document.createElement('button');
+                button.textContent = `${index + 1}. ${file.name}`;
+                button.className = `w-full text-left p-2 rounded-md transition-all truncate 
+                    ${isCurrent ? 'bg-[#2e64e8] text-white font-semibold shadow-lg' : 'text-gray-300 hover:bg-[#394a64]'}`;
+
+                button.onclick = () => {
+                    loadChapter(index, 0);
+                    // Scroll to the current item
+                    button.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                };
+
+                currentChapterListEl.appendChild(button);
+            });
+
+            // Scroll to the current item on initial load/update
+            const currentItem = currentChapterListEl.querySelector('.font-semibold');
+            if(currentItem) {
+                currentItem.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+        }
+
+        // --- Event Handlers ---
+
+        function handleNextChapter() {
+            if (currentChapterIndex < audioFiles.length - 1) {
+                loadChapter(currentChapterIndex + 1, 0);
+            }
+        }
+
+        function handlePrevChapter() {
+            if (currentChapterIndex > 0) {
+                loadChapter(currentChapterIndex - 1, 0);
+            }
+        }
+
+        /**
+         * Processes the files selected by the user.
+         */
+        function handleFileSelection(event) {
+            const files = Array.from(event.target.files);
+            if (files.length === 0) {
+                 showNotification("No Selection", "You didn't select any files. Please try selecting the audiobook folder again.");
+                 return;
+            }
+
+            try {
+                showProcessing("Processing folder contents...");
+
+                // 1. Filter for common audio file types and sort them by path/name
+                audioFiles = files
+                    .filter(file => file.type.startsWith('audio/') || file.name.match(/\.(mp3|m4a|ogg|wav)$/i))
+                    .sort((a, b) => a.webkitRelativePath.localeCompare(b.webkitRelativePath));
+
+                if (audioFiles.length === 0) {
+                    hideProcessing();
+                    fileInputContainer.classList.remove('hidden');
+                    showNotification("No Audio Files Found", "The selected folder contains no recognized audio files (.mp3, .m4a, etc.). Please select a folder with chapters.");
+                    return;
+                }
+
+                console.log(`Loaded ${audioFiles.length} audio files.`);
+
+                // 2. Load playback state immediately after files are sorted
+                showProcessing(`Found ${audioFiles.length} chapters. Checking saved progress...`);
+                startPlaybackStateListener();
+
+            } catch (error) {
+                console.error("File selection processing failed:", error);
+                hideProcessing();
+                fileInputContainer.classList.remove('hidden');
+                showNotification("File Processing Error", `Failed to read the selected files. Reason: ${error.message}`);
+            }
+        }
+
+        // Setup event listeners
+        folderInput.addEventListener('change', handleFileSelection);
+        nextChapterBtn.addEventListener('click', handleNextChapter);
+        prevChapterBtn.addEventListener('click', handlePrevChapter);
+
+        // Save progress every 5 seconds while playing
+        let saveInterval;
+        audioPlayer.addEventListener('play', () => {
+            if (saveInterval) clearInterval(saveInterval);
+            saveInterval = setInterval(savePlaybackState, 5000);
+        });
+
+        // Clear interval when paused or stopped
+        audioPlayer.addEventListener('pause', () => {
+            if (saveInterval) clearInterval(saveInterval);
+            savePlaybackState(); // Save state immediately on pause
+        });
+
+        audioPlayer.addEventListener('timeupdate', () => {
+            // Update time, but the save logic is handled by the interval
+        });
+
+        // Automatically advance to the next chapter on end
+        audioPlayer.addEventListener('ended', () => {
+            if (currentChapterIndex < audioFiles.length - 1) {
+                handleNextChapter();
+            } else {
+                if (saveInterval) clearInterval(saveInterval);
+                statusMessage.textContent = "Audiobook finished! Progress saved for resume.";
+                updateControls();
+            }
+        });
+
+
+        // --- Initialization ---
+
+        async function initFirebase() {
+            try {
+                if (!firebaseConfig) {
+                    // Initialization cannot proceed without config, but we already updated the status message globally.
+                    return;
+                }
+                
+                // setLogLevel('debug'); // Uncomment for verbose firebase logging
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+
+                // Set initial status while authentication is in progress
+                statusMessage.textContent = "Authenticating user...";
+
+                // 1. Set up the state change listener first. This will fire immediately
+                //    when the auth object is ready and again after sign-in completes.
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        // Success: The user is authenticated.
+                        userId = user.uid;
+                        currentUserIdEl.textContent = userId;
+                        isAuthReady = true;
+                        statusMessage.textContent = "Authentication complete. Ready to load your book.";
+                    } else {
+                        // Failure or Initial Null State (the issue you are seeing)
+                        if (hasAuthAttempted) {
+                            // This runs if we tried to sign in (hasAuthAttempted is true) but failed or got signed out later.
+                            userId = 'anonymous (not logged in)';
+                            currentUserIdEl.textContent = userId;
+                            isAuthReady = false;
+                            statusMessage.textContent = "Authentication failed. Progress will not be saved.";
+                            // We explicitly avoid showing the disruptive modal here, as the status message is enough.
+                            // If a critical error happened, it would have been caught in the catch block below.
+                        } else {
+                            // This is the very first (temporary) null state before the sign-in promise resolves.
+                            statusMessage.textContent = "Awaiting authentication response...";
+                        }
+                    }
+                });
+
+                // 2. Start the authentication process
+                // SET FLAG BEFORE ATTEMPT
+                hasAuthAttempted = true; 
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+
+            } catch (error) {
+                console.error("Firebase Initialization Error:", error);
+                statusMessage.textContent = `Initialization Error: ${error.message}`;
+                showNotification("Initialization Failed", `Could not connect to the database. Progress saving will not work. Reason: ${error.message}`);
+            }
+        }
+
+        initFirebase();
+    </script>
+</body>
+</html>
